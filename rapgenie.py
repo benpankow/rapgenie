@@ -3,8 +3,7 @@ from bs4 import Comment
 import requests
 import re
 import string
-
-CLIENT_ACCESS_TOKEN = 'yVydbD3rqBJNqJPRTDhqmWqm9Qc0YlpVpTmk0wnvaH1ptzq2YwyP_EWHEdfRgTI3'
+from rapgenie_secret import CLIENT_ACCESS_TOKEN
 
 GENIUS_URL = 'https://genius.com/'
 API_GENIUS_URL = 'https://api.genius.com/'
