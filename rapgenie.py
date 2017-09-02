@@ -83,24 +83,29 @@ def process_song_fragments(song):
     current_fragment_tags = []
     tags_to_look_for = ['[', '<i>', '</i>', '<b>', '</b>', '<em>', '</em>']
 
+    # Search for section header or HTML tag
     found_index, found_type = _min_search(lyrics_left, tags_to_look_for)
 
     while found_type:
+        # Create fragment of text up to the found tag / header
         fragment = lyrics_left[:found_index]
         fragment_text = BeautifulSoup(fragment, 'lxml').text
         if len(fragment_text.strip()) > 0:
             fragment_obj = Fragment(current_artist, fragment_text)
+            # Append fragment to the last if their artists match
             if len(current_section.fragments) > 0 and current_section.fragments[-1].artist == fragment_obj.artist:
                 current_section.fragments[-1].text += fragment_text
             else:
                 current_section.fragments.append(fragment_obj)
 
+        # If a non-section-header square bracket is found (ie a [?] for an unknown lyric)
         if found_type == '[' and lyrics_left[found_index - 1] != '\n':
             lyrics_left = lyrics_left[found_index+1:]
             end_bracket_index = lyrics_left.find(']')
             lyrics_left = lyrics_left[end_bracket_index + 1:]
             found_index, found_type = _min_search(lyrics_left, tags_to_look_for)
 
+        # When a section header
         if (found_type == '['):
             if len(current_section.fragments) > 0:
                 sections.append(current_section)
@@ -110,10 +115,11 @@ def process_song_fragments(song):
 
             tag = lyrics_left[:end_bracket_index]
             end_name_index = tag.find(':')
-            if end_name_index == -1:
+            if end_name_index == -1:agm
                 end_name_index = end_bracket_index
             tag_name = tag[:end_name_index]
 
+            # Get the list of artists present in the song section
             artists_string = tag[end_name_index + 1:].strip()
             artists_string = artists_string.replace('&amp;', ',').replace('+', ',').replace(' and ', ',')
 
@@ -125,15 +131,18 @@ def process_song_fragments(song):
                         tag_artists = section.artists
 
             section_artists = {}
-
             look_for_parens = False
 
             for artist in tag_artists:
                 artist_bs = BeautifulSoup(artist, 'lxml')
                 if artist_bs.html and artist_bs.html.body:
+                    # Locate HTML tags around an artist's name, to signify what
+                    # their lyrics will be tagged with
                     tags = artist_bs.html.body.findAll(['b', 'i', 'em'])
                     artist_name = artist_bs.text
                     has_parens = False
+
+                    # See if an artist's name is surrounded by parenthesis
                     if artist_name[0] == '(' and artist_name[-1] == ')':
                         artist_name = artist_name[1:-1]
                         has_parens = True
@@ -149,6 +158,9 @@ def process_song_fragments(song):
 
             current_artist = section_artists['']
 
+            # If an artist in this section is identified by parenthesis, make
+            # sure to search for them in the lyrics, otherwise treat them as
+            # ordinary text
             if look_for_parens:
                 tags_to_look_for = ['[', '<i>', '</i>', '<b>', '</b>', '<em>', '</em>', '(', ')']
             else:
