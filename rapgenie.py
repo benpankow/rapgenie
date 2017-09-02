@@ -67,29 +67,26 @@ def get_song_data(song):
                 elem.extract()
 
         song.html_lyrics = str(lyrics_html)
-# TODO
+
+# Parses song's lyrics, and splits them into sections and fragments tied to
+# specific artists
 def process_song_fragments(song):
     song.has_fragments = True
+
+    lyrics_left = song.html_lyrics
+
     sections = []
+    section_artists = {}
 
-    main_artist = song.artist.name
-    other_artists = {}
+    current_section = Section('Intro', song.artist.name)
+    current_artist = song.artist.name
+    current_fragment_tags = []
+    tags_to_look_for = ['[', '<i>', '</i>', '<b>', '</b>', '<em>', '</em>']
 
-    current_section = Section('Verse 1', main_artist)
-
-    current_artist = main_artist
-
-    current = song.html_lyrics
-
-    current_tags = []
-
-    to_look_for = ['[', '<i>', '</i>', '<b>', '</b>', '<em>', '</em>']
-
-    #found = current.find('[')
-    found_index, found_type = _min_search(current, to_look_for)
+    found_index, found_type = _min_search(lyrics_left, tags_to_look_for)
 
     while found_type:
-        fragment = current[:found_index]
+        fragment = lyrics_left[:found_index]
         fragment_text = BeautifulSoup(fragment, 'lxml').text
         if len(fragment_text.strip()) > 0:
             fragment_obj = Fragment(current_artist, fragment_text)
@@ -98,17 +95,23 @@ def process_song_fragments(song):
             else:
                 current_section.fragments.append(fragment_obj)
 
+        if found_type == '[' and lyrics_left[found_index - 1] != '\n':
+            lyrics_left = lyrics_left[found_index+1:]
+            end_bracket_index = lyrics_left.find(']')
+            lyrics_left = lyrics_left[end_bracket_index + 1:]
+            found_index, found_type = _min_search(lyrics_left, tags_to_look_for)
+
         if (found_type == '['):
             if len(current_section.fragments) > 0:
                 sections.append(current_section)
 
-            current = current[found_index+1:]
-            found2 = current.find(']')
+            lyrics_left = lyrics_left[found_index+1:]
+            end_bracket_index = lyrics_left.find(']')
 
-            tag = current[:found2]
+            tag = lyrics_left[:end_bracket_index]
             end_name_index = tag.find(':')
             if end_name_index == -1:
-                end_name_index = found2
+                end_name_index = end_bracket_index
             tag_name = tag[:end_name_index]
 
             artists_string = tag[end_name_index + 1:].strip()
@@ -121,13 +124,7 @@ def process_song_fragments(song):
                     if section.name == tag_name:
                         tag_artists = section.artists
 
-            main_artist = tag_artists[0]
-
-            if len(main_artist) < 1:
-                main_artist = song.artist.name
-
-            current_artist = main_artist
-            other_artists = {}
+            section_artists = {}
 
             look_for_parens = False
 
@@ -141,45 +138,46 @@ def process_song_fragments(song):
                         artist_name = artist_name[1:-1]
                         has_parens = True
                         look_for_parens = True
-                    if (tags and len(tags) > 0) or has_parens:
-                        name = [tag.name for tag in tags]
-                        if has_parens:
-                            name += '('
-                        name.sort()
-                        other_artists[''.join(name)] = artist_name
-                    else:
-                        main_artist = artist_name
-            if look_for_parens:
-                to_look_for = ['[', '<i>', '</i>', '<b>', '</b>', '<em>', '</em>', '(', ')']
-            else:
-                to_look_for = ['[', '<i>', '</i>', '<b>', '</b>', '<em>', '</em>']
-            current_section = Section(tag_name, [main_artist] + other_artists.values())
+                    name = [tag.name for tag in tags]
+                    if has_parens:
+                        name += '('
+                    name.sort()
+                    section_artists[''.join(name)] = artist_name
 
-            current = current[found2 + 1:]
-            found_index, found_type = _min_search(current, to_look_for)
+            if not '' in section_artists or len(section_artists['']) < 1:
+                section_artists[''] = song.artist.name
+
+            current_artist = section_artists['']
+
+            if look_for_parens:
+                tags_to_look_for = ['[', '<i>', '</i>', '<b>', '</b>', '<em>', '</em>', '(', ')']
+            else:
+                tags_to_look_for = ['[', '<i>', '</i>', '<b>', '</b>', '<em>', '</em>']
+            current_section = Section(tag_name, [section_artists['']] + section_artists.values())
+
+            lyrics_left = lyrics_left[end_bracket_index + 1:]
+            found_index, found_type = _min_search(lyrics_left, tags_to_look_for)
         else:
-            current = current[found_index + len(found_type):]
+            lyrics_left = lyrics_left[found_index + len(found_type):]
             processed_tag = found_type.replace('/', '').replace(')', '(')
             if '<' in processed_tag:
                 processed_tag = processed_tag[1:-1]
             if (found_type.find('/') != -1 or found_type == ')'):
-                current_tags.remove(processed_tag)
+                current_fragment_tags.remove(processed_tag)
             else:
-                current_tags.append(processed_tag)
+                current_fragment_tags.append(processed_tag)
 
-            current_tags.sort()
+            current_fragment_tags.sort()
 
-            if len(current_tags) == 0:
-                current_artist = main_artist
-            elif ''.join(current_tags) in other_artists:
-                current_artist = other_artists[''.join(current_tags)]
+            if ''.join(current_fragment_tags) in section_artists:
+                current_artist = section_artists[''.join(current_fragment_tags)]
             else:
-                for artist in other_artists:
+                for artist in section_artists:
                     print '> ', artist
                 current_artist = 'Other'
-            found_index, found_type = _min_search(current, to_look_for)
+            found_index, found_type = _min_search(lyrics_left, tags_to_look_for)
 
-    fragment = current.strip()
+    fragment = lyrics_left.strip()
     fragment_text = BeautifulSoup(fragment, 'lxml').text
     if len(fragment_text.strip()) > 0:
         fragment_obj = Fragment(current_artist, fragment_text)
@@ -293,7 +291,7 @@ class Song:
             return 'Unrequested song with ID ' + self.song_id
 
 
-new_god_flow = Song.from_url('https://genius.com/A-ap-mob-frat-rules-lyrics')
+new_god_flow = Song.from_url('https://genius.com/A-ap-mob-what-happens-lyrics')
 new_god_flow.request().parse()
 
 output = ''
@@ -301,6 +299,7 @@ for section in new_god_flow.sections:
     for fragment in section.fragments:
         output += fragment.artist + '\n' + fragment.text.replace('\n', ' ') + '\n\n'
 
+print 'writ'
 with open('test.txt', 'w+') as f:
     f.write(output.encode('utf-8'))
 
