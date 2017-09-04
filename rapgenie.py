@@ -4,6 +4,7 @@ import requests
 import re
 import string
 from rapgenie_secret import CLIENT_ACCESS_TOKEN
+import difflib
 
 GENIUS_URL = 'https://genius.com/'
 API_GENIUS_URL = 'https://api.genius.com/'
@@ -48,9 +49,28 @@ def get_song_data(song):
     if html_response != None and json_response != None:
         # Store song metadata (TODO: More)
         song.has_data = True
-        song.title = json_response['response']['song']['title']
-        song.artist = Artist.from_id(json_response['response']['song']['primary_artist']['id'])
-        song.artist.name = json_response['response']['song']['primary_artist']['name']
+
+        json_data = json_response['response']['song']
+        song.title = json_data['title']
+        song.release_date = json_data['release_date']
+        song.artist = Artist.from_id(json_data['primary_artist']['id'])
+        song.artist.name = json_data['primary_artist']['name']
+        song.featured_artists = []
+
+        for featured_artist in json_data['featured_artists']:
+            featured_artist_obj = Artist.from_id(featured_artist['id'])
+            featured_artist_obj.name = featured_artist['name']
+            song.featured_artists.append(featured_artist_obj)
+
+        song.additional_vocals = []
+
+        for additional_credits in json_data['custom_performances']:
+            if 'Additional Vocals' in additional_credits['label']:
+                for vocal_artist in additional_credits['artists']:
+                    featured_artist_obj = Artist.from_id(vocal_artist['id'])
+                    featured_artist_obj.name = vocal_artist['name']
+                    print featured_artist_obj.name
+                    song.additional_vocals.append(featured_artist_obj)
 
         # Store song lyrics, in plaintext and html
         lyrics_html = html_response('div', {'class' : 'lyrics'})[0]
@@ -78,8 +98,8 @@ def process_song_fragments(song):
     sections = []
     section_artists = {}
 
-    current_section = Section('Intro', song.artist.name)
-    current_artist = song.artist.name
+    current_section = Section('Intro', song.artist)
+    current_artist = song.artist
     current_fragment_tags = []
     tags_to_look_for = ['[', '<i>', '</i>', '<b>', '</b>', '<em>', '</em>']
 
@@ -115,7 +135,7 @@ def process_song_fragments(song):
 
             tag = lyrics_left[:end_bracket_index]
             end_name_index = tag.find(':')
-            if end_name_index == -1:agm
+            if end_name_index == -1:
                 end_name_index = end_bracket_index
             tag_name = tag[:end_name_index]
 
@@ -151,10 +171,19 @@ def process_song_fragments(song):
                     if has_parens:
                         name += '('
                     name.sort()
-                    section_artists[''.join(name)] = artist_name
 
-            if not '' in section_artists or len(section_artists['']) < 1:
-                section_artists[''] = song.artist.name
+                    artist_obj = None
+                    max_ratio = 0
+                    for featured_artist in song.featured_artists + [song.artist]:
+                        ratio = difflib.SequenceMatcher(None, featured_artist.name, artist_name).ratio()
+                        if ratio > .8 and ratio > max_ratio:
+                            artist_obj = featured_artist
+                            max_ratio = ratio
+
+                    section_artists[''.join(name)] = artist_obj
+
+            if not '' in section_artists:
+                section_artists[''] = song.artist
 
             current_artist = section_artists['']
 
@@ -186,7 +215,7 @@ def process_song_fragments(song):
             else:
                 for artist in section_artists:
                     print '> ', artist
-                current_artist = 'Other'
+                current_artist = None
             found_index, found_type = _min_search(lyrics_left, tags_to_look_for)
 
     fragment = lyrics_left.strip()
@@ -303,13 +332,16 @@ class Song:
             return 'Unrequested song with ID ' + self.song_id
 
 
-new_god_flow = Song.from_url('https://genius.com/A-ap-mob-what-happens-lyrics')
+new_god_flow = Song.from_url('https://genius.com/Travis-scott-90210-lyrics')
 new_god_flow.request().parse()
 
 output = ''
 for section in new_god_flow.sections:
     for fragment in section.fragments:
-        output += fragment.artist + '\n' + fragment.text.replace('\n', ' ') + '\n\n'
+        name = 'None'
+        if fragment.artist:
+            name = fragment.artist.name
+        output += name + '\n' + fragment.text.replace('\n', ' ') + '\n\n'
 
 print 'writ'
 with open('test.txt', 'w+') as f:
