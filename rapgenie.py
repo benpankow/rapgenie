@@ -26,52 +26,14 @@ def _min_search(target_string, search_terms):
             best = term
     return (lowest, best)
 
-# Fetch song lyrics and metadata
-def get_song_data(song):
-    html_response = None
-    json_response = None
-
-    # Fetch song page, extract song id from page
+# Fetch song lyrics
+def get_song_lyrics(song):
     if song.url:
         html_response = _bs_spoof(song.url)
-        id_base = html_response('meta', {'name' : 'newrelic-resource-path'})[0]['content']
-        song_id = id_base[id_base.rfind('/') + 1:]
-        song.song_id = song_id
-        # Fetch API info
-        json_response = song.genie.api_access(API_SONG_BASE_URL + song.song_id)
-
-    # Fetch song API info, extract song url from page
-    elif song.song_id:
-        json_response = song.genie.api_access(API_SONG_BASE_URL + song.song_id)
-        song.url = json_response['response']['song']['url']
-        # Fetch song page
-        html_response = _bs_spoof(song.url)
-
-    if html_response != None and json_response != None:
-        # Store song metadata (TODO: More)
-        song.has_data = True
-
-        json_data = json_response['response']['song']
-        song.title = json_data['title']
-        song.release_date = json_data['release_date']
-        song.artist = song.genie.artist_from_id(json_data['primary_artist']['id'])
-        song.artist.name = json_data['primary_artist']['name']
-        song.featured_artists = []
-
-        for featured_artist in json_data['featured_artists']:
-            featured_artist_obj = song.genie.artist_from_id(featured_artist['id'])
-            featured_artist_obj.name = featured_artist['name']
-            song.featured_artists.append(featured_artist_obj)
-
-        song.credits = {}
-
-        for additional_credits in json_data['custom_performances']:
-            label = additional_credits['label']
-            song.credits[label] = []
-            for credited_artist in additional_credits['artists']:
-                credited_artist_obj = song.genie.artist_from_id(credited_artist['id'])
-                credited_artist_obj.name = credited_artist['name']
-                song.credits[label].append(credited_artist_obj)
+        if not song.song_id:
+            id_base = html_response('meta', {'name' : 'newrelic-resource-path'})[0]['content']
+            song_id = id_base[id_base.rfind('/') + 1:]
+            song.song_id = song_id
 
         # Store song lyrics, in plaintext and html
         lyrics_html = html_response('div', {'class' : 'lyrics'})[0]
@@ -88,6 +50,44 @@ def get_song_data(song):
                 elem.extract()
 
         song.html_lyrics = str(lyrics_html)
+
+# Fetch song lyrics and metadata
+def get_song_data(song):
+    #html_response = None
+    json_response = None
+
+    # Fetch song API info, extract song url from page
+    #elif song.song_id:
+    json_response = song.genie.api_access(API_SONG_BASE_URL + song.song_id)
+    song.url = json_response['response']['song']['url']
+    # Fetch song page
+    #html_response = _bs_spoof(song.url)
+
+#    if html_response != None and json_response != None:
+    # Store song metadata (TODO: More)
+    song.has_data = True
+
+    json_data = json_response['response']['song']
+    song.title = json_data['title']
+    song.release_date = json_data['release_date']
+    song.artist = song.genie.artist_from_id(json_data['primary_artist']['id'])
+    song.artist.name = json_data['primary_artist']['name']
+    song.featured_artists = []
+
+    for featured_artist in json_data['featured_artists']:
+        featured_artist_obj = song.genie.artist_from_id(featured_artist['id'])
+        featured_artist_obj.name = featured_artist['name']
+        song.featured_artists.append(featured_artist_obj)
+
+    song.credits = {}
+
+    for additional_credits in json_data['custom_performances']:
+        label = additional_credits['label']
+        song.credits[label] = []
+        for credited_artist in additional_credits['artists']:
+            credited_artist_obj = song.genie.artist_from_id(credited_artist['id'])
+            credited_artist_obj.name = credited_artist['name']
+            song.credits[label].append(credited_artist_obj)
 
 # Parses song's lyrics, and splits them into sections and fragments tied to
 # specific artists
@@ -281,12 +281,13 @@ class Artist:
 
 # An instance of a song
 # Can be created by ID or url, but does not contain information until data is
-# requested from the api using song_obj.request()
+# requested from the api using song_obj.request_api()
 class Song:
     def __init__(self, genie):
         self.url = None
         self.song_id = None
         self.has_data = False
+        self.has_lyrics = False
         self.has_fragments = False
         self.sections = None
         self.featured_artists = None
@@ -294,12 +295,23 @@ class Song:
         self.credits = None
         self.genie = genie
 
-    def request(self):
+    def request_api(self):
+        if not self.song_id and self.url:
+            self.request_lyrics()
         if not self.has_data:
             get_song_data(self)
         return self
 
-    def parse(self):
+    def request_lyrics(self):
+        if not self.url:
+            self.request_api()
+        if not self.has_lyrics:
+            get_song_lyrics(self)
+        return self
+
+    def parse_lyrics(self):
+        if not self.has_lyrics:
+            self.request_lyrics()
         if not self.has_fragments:
             process_song_fragments(self)
         return self
@@ -351,10 +363,10 @@ class Genie:
 
 genie = Genie(CLIENT_ACCESS_TOKEN)
 for result in genie.search('telephone calls'):
-    for artist in result.request().featured_artists:
+    for artist in result.request_api().featured_artists:
         print artist.name
-song = genie.song_from_url('https://genius.com/A-ap-ferg-mad-man-lyrics')
-song.request().parse()
+song = genie.song_from_id(2893424)
+song.request_lyrics().parse_lyrics()
 
 output = ''
 for section in song.sections:
@@ -391,7 +403,7 @@ output = ''
 artists = {}
 for song_url in songs:
     song_obj = Song.from_url(song_url)
-    song_obj.request().parse()
+    song_obj.request_api().parse()
 
     for section in song_obj.sections:
         for fragment in section.fragments:
