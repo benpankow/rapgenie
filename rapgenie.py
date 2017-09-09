@@ -30,7 +30,7 @@ def min_search(target_string, search_terms):
 def get_song_lyrics(song):
     if song.url:
         html_response = bs_spoof(song.url)
-        if not song.song_id:
+        if song.song_id is None:
             id_base = html_response('meta', {'name' : 'newrelic-resource-path'})[0]['content']
             song_id = id_base[id_base.rfind('/') + 1:]
             song.song_id = song_id
@@ -296,14 +296,14 @@ class Song:
         self.genie = genie
 
     def request_api(self):
-        if not self.song_id and self.url:
+        if (self.song_id is None) and self.url:
             self.request_lyrics()
         if not self.has_data:
             get_song_data(self)
         return self
 
     def request_lyrics(self):
-        if not self.url:
+        if self.url is None:
             self.request_api()
         if not self.has_lyrics:
             get_song_lyrics(self)
