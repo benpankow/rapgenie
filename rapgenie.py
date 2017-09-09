@@ -16,7 +16,7 @@ API_SEARCH_BASE_URL = API_GENIUS_URL + 'search?q='
 # Searches for a number of terms in a given string
 # Returns a tuple with the first element the index of the first locate
 # term, the second element the term itself
-def _min_search(target_string, search_terms):
+def min_search(target_string, search_terms):
     lowest = -1
     best = None
     for term in search_terms:
@@ -29,8 +29,8 @@ def _min_search(target_string, search_terms):
 # Fetch song lyrics
 def get_song_lyrics(song):
     if song.url:
-        html_response = _bs_spoof(song.url)
-        if not song.song_id:
+        html_response = bs_spoof(song.url)
+        if song.song_id is None:
             id_base = html_response('meta', {'name' : 'newrelic-resource-path'})[0]['content']
             song_id = id_base[id_base.rfind('/') + 1:]
             song.song_id = song_id
@@ -61,7 +61,7 @@ def get_song_data(song):
     json_response = song.genie.api_access(API_SONG_BASE_URL + song.song_id)
     song.url = json_response['response']['song']['url']
     # Fetch song page
-    #html_response = _bs_spoof(song.url)
+    #html_response = bs_spoof(song.url)
 
 #    if html_response != None and json_response != None:
     # Store song metadata (TODO: More)
@@ -106,7 +106,7 @@ def process_song_fragments(song):
     tags_to_look_for = tags_to_look_for_base[:]
 
     # Search for section header or HTML tag
-    found_index, found_type = _min_search(lyrics_left, tags_to_look_for)
+    found_index, found_type = min_search(lyrics_left, tags_to_look_for)
 
     # Potential artists who may deliver lyrics in the song
     potential_artists = song.featured_artists + [song.artist]
@@ -130,7 +130,7 @@ def process_song_fragments(song):
             lyrics_left = lyrics_left[found_index+1:]
             end_bracket_index = lyrics_left.find(']')
             lyrics_left = lyrics_left[end_bracket_index + 1:]
-            found_index, found_type = _min_search(lyrics_left, tags_to_look_for)
+            found_index, found_type = min_search(lyrics_left, tags_to_look_for)
 
         # When a section header
         if (found_type == '['):
@@ -204,7 +204,7 @@ def process_song_fragments(song):
             current_section = Section(tag_name, [section_artists['']] + section_artists.values())
 
             lyrics_left = lyrics_left[end_bracket_index + 1:]
-            found_index, found_type = _min_search(lyrics_left, tags_to_look_for)
+            found_index, found_type = min_search(lyrics_left, tags_to_look_for)
         else:
             lyrics_left = lyrics_left[found_index + len(found_type):]
             processed_tag = found_type.replace('/', '').replace(')', '(')
@@ -221,7 +221,7 @@ def process_song_fragments(song):
                 current_artist = section_artists[''.join(current_fragment_tags)]
             else:
                 current_artist = None
-            found_index, found_type = _min_search(lyrics_left, tags_to_look_for)
+            found_index, found_type = min_search(lyrics_left, tags_to_look_for)
 
     fragment = lyrics_left.strip()
     fragment_text = BeautifulSoup(fragment, 'lxml').text
@@ -238,7 +238,7 @@ def process_song_fragments(song):
     song.sections = sections
 
 # Load a given webpage's html contents into a BeautifulSoup object
-def _bs_spoof(url):
+def bs_spoof(url):
     response = requests.get(url, headers = {'User-Agent': 'Mozilla/5.0'})
     return BeautifulSoup(response.text, 'lxml')
 
@@ -296,14 +296,14 @@ class Song:
         self.genie = genie
 
     def request_api(self):
-        if not self.song_id and self.url:
+        if (self.song_id is None) and self.url:
             self.request_lyrics()
         if not self.has_data:
             get_song_data(self)
         return self
 
     def request_lyrics(self):
-        if not self.url:
+        if self.url is None:
             self.request_api()
         if not self.has_lyrics:
             get_song_lyrics(self)
