@@ -5,7 +5,7 @@ __pycache__/
 *.txt
 *.png
 
-rapgenie_secret.py
+rapgenie/rapgenie_secret.py
 
 # C extensions
 *.so

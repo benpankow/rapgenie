@@ -51,44 +51,6 @@ def get_song_lyrics(song):
 
         song.html_lyrics = str(lyrics_html)
 
-# Fetch song lyrics and metadata
-def get_song_data(song):
-    #html_response = None
-    json_response = None
-
-    # Fetch song API info, extract song url from page
-    #elif song.song_id:
-    json_response = song.genie.api_access(API_SONG_BASE_URL + song.song_id)
-    song.url = json_response['response']['song']['url']
-    # Fetch song page
-    #html_response = bs_spoof(song.url)
-
-#    if html_response != None and json_response != None:
-    # Store song metadata (TODO: More)
-    song.has_data = True
-
-    json_data = json_response['response']['song']
-    song.title = json_data['title']
-    song.release_date = json_data['release_date']
-    song.artist = song.genie.artist_from_id(json_data['primary_artist']['id'])
-    song.artist.name = json_data['primary_artist']['name']
-    song.featured_artists = []
-
-    for featured_artist in json_data['featured_artists']:
-        featured_artist_obj = song.genie.artist_from_id(featured_artist['id'])
-        featured_artist_obj.name = featured_artist['name']
-        song.featured_artists.append(featured_artist_obj)
-
-    song.credits = {}
-
-    for additional_credits in json_data['custom_performances']:
-        label = additional_credits['label']
-        song.credits[label] = []
-        for credited_artist in additional_credits['artists']:
-            credited_artist_obj = song.genie.artist_from_id(credited_artist['id'])
-            credited_artist_obj.name = credited_artist['name']
-            song.credits[label].append(credited_artist_obj)
-
 # Parses song's lyrics, and splits them into sections and fragments tied to
 # specific artists
 def process_song_fragments(song):
