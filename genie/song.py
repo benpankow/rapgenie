@@ -4,6 +4,15 @@ import requests
 import re
 import string
 import difflib
+from .section import Section
+from .fragment import Fragment
+
+GENIUS_URL = 'https://genius.com/'
+API_GENIUS_URL = 'https://api.genius.com/'
+
+API_SONG_BASE_URL = API_GENIUS_URL + 'songs/'
+API_ARTISTS_BASE_URL = API_GENIUS_URL + 'artists/'
+API_SEARCH_BASE_URL = API_GENIUS_URL + 'search?q='
 
 # Load a given webpage's html contents into a BeautifulSoup object
 def bs_spoof(url):
@@ -54,7 +63,7 @@ class Song:
         if not self.has_lyrics:
             self.request_lyrics()
         if not self.has_fragments:
-            self.process_song_fragments(self)
+            self.process_song_fragments()
         return self
 
     def __str__(self):
@@ -243,7 +252,7 @@ class Song:
                 tags_to_look_for = tags_to_look_for_base[:]
                 if look_for_parens:
                     tags_to_look_for += ['(', ')']
-                current_section = Section(tag_name, [section_artists['']] + section_artists.values())
+                current_section = Section(tag_name, [section_artists['']] + list(section_artists.values()))
 
                 lyrics_left = lyrics_left[end_bracket_index + 1:]
                 found_index, found_type = min_search(lyrics_left, tags_to_look_for)

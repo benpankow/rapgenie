@@ -1,5 +1,5 @@
-import song
-import section
-import fragment
-import rapgenie
-import artist
+from .song import Song
+from .section import Section
+from .artist import Artist
+from .fragment import Fragment
+from .rapgenie import RapGenie

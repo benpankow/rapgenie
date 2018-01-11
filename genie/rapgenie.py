@@ -1,4 +1,6 @@
 import requests
+from .song import Song
+from .artist import Artist
 
 GENIUS_URL = 'https://genius.com/'
 API_GENIUS_URL = 'https://api.genius.com/'
@@ -33,7 +35,7 @@ class RapGenie:
         return artist
 
     def search(self, query):
-        response =  self.api_access(API_SEARCH_BASE_URL + query)['response']['hits']
+        response = self.api_access(API_SEARCH_BASE_URL + query)['response']['hits']
         for song in response:
             song_obj = self.song_from_id(song['result']['id'])
             song_obj.title = song['result']['title']
