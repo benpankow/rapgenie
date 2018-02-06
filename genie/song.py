@@ -163,16 +163,23 @@ class Song:
         current_section = Section('Intro', self.artist)
         current_artist = self.artist
         current_fragment_tags = []
-        tags_to_look_for_base = ['[', '<i>', '</i>', '<b>', '</b>', '<em>', '</em>', '<strong>', '</strong>']
-        tags_to_look_for = tags_to_look_for_base[:]
+
+        search_for_parens = False
+        tag_search_str_base = '\[|<i>|</i>|<b>|</b>|<em>|</em>|<strong>|</strong>'
+        tag_search_str = tag_search_str_base[:]
 
         # Potential artists who may deliver lyrics in the song
         potential_artists = self.get_potential_artists()
 
         # Search for section header or HTML tag
-        found_index, found_type = min_search(lyrics_left, tags_to_look_for)
+        # found_index, found_type = min_search(lyrics_left, tags_to_look_for)
+        found = re.search(tag_search_str, lyrics_left)
 
-        while found_type:
+        while found:
+            found_index = found.start(0)
+            found_end_index = found.end(0)
+            found_type = found.group(0)
+
             # Create fragment of text up to the found tag / header
             fragment = lyrics_left[:found_index]
             fragment_text = BeautifulSoup(fragment, 'lxml').text
@@ -180,17 +187,14 @@ class Song:
 
             # If a non-section-header square bracket is found (ie a [?] for an unknown lyric)
             if found_type == '[' and (lyrics_left[found_index - 1] != '\n' or lyrics_left[lyrics_left[found_index:].find(']') + found_index + 1] != '<'):
-                lyrics_left = lyrics_left[found_index+1:]
+                lyrics_left = lyrics_left[found_end_index:]
                 end_bracket_index = lyrics_left.find(']')
                 lyrics_left = lyrics_left[end_bracket_index + 1:]
-                found_index, found_type = min_search(lyrics_left, tags_to_look_for)
-
             # When a section header
             elif (found_type == '['):
                 if len(current_section.fragments) > 0:
                     sections.append(current_section)
-
-                lyrics_left = lyrics_left[found_index+1:]
+                lyrics_left = lyrics_left[found_end_index:]
                 end_bracket_index = lyrics_left.find(']')
 
                 tag = lyrics_left[:end_bracket_index]
@@ -202,9 +206,7 @@ class Song:
                 # Get the list of artists present in the song section
                 artists_string = tag[end_name_index + 1:].strip()
 
-                print(artists_string)
                 tag_artists = [x.strip() for x in re.split(',?\s*and\s*|\s*&amp;\s*|\s(?=\()|\s*,\s*', artists_string)]
-                print(tag_artists)
 
                 if len(tag_artists) == 0 or len(tag_artists[0]) == 0:
                     for section in sections:
@@ -256,15 +258,14 @@ class Song:
                 # If an artist in this section is identified by parenthesis, make
                 # sure to search for them in the lyrics, otherwise treat them as
                 # ordinary text
-                tags_to_look_for = tags_to_look_for_base[:]
+                tag_search_str = tag_search_str_base[:]
                 if look_for_parens:
-                    tags_to_look_for += ['(', ')']
+                    tag_search_str += '|\)|\('
                 current_section = Section(tag_name, [section_artists['']] + list(section_artists.values()))
 
                 lyrics_left = lyrics_left[end_bracket_index + 1:]
-                found_index, found_type = min_search(lyrics_left, tags_to_look_for)
             else:
-                lyrics_left = lyrics_left[found_index + len(found_type):]
+                lyrics_left = lyrics_left[found_end_index:]
                 processed_tag = found_type.replace('/', '').replace(')', '(')
                 if '<' in processed_tag:
                     processed_tag = processed_tag[1:-1]
@@ -279,7 +280,7 @@ class Song:
                     current_artist = section_artists[''.join(current_fragment_tags)]
                 else:
                     current_artist = None
-                found_index, found_type = min_search(lyrics_left, tags_to_look_for)
+            found = re.search(tag_search_str, lyrics_left)
 
         fragment = lyrics_left.strip()
         fragment_text = BeautifulSoup(fragment, 'lxml').text
