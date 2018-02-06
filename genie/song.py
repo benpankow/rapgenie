@@ -180,8 +180,17 @@ class Song:
             found_end_index = found.end(0)
             found_type = found.group(0)
 
+            paren_before_tag = False
+
             # Create fragment of text up to the found tag / header
             fragment = lyrics_left[:found_index]
+            if len(fragment) > 0 and fragment[-1] == '(':
+                fragment = fragment[:-1]
+                paren_before_tag = True
+            if lyrics_left[found_end_index] == ')':
+                fragment += ')'
+                found_end_index += 1
+
             fragment_text = BeautifulSoup(fragment, 'lxml').text
             current_section.fragments = self.process_fragment_text(current_section.fragments, current_artist, fragment_text)
 
@@ -266,6 +275,9 @@ class Song:
                 lyrics_left = lyrics_left[end_bracket_index + 1:]
             else:
                 lyrics_left = lyrics_left[found_end_index:]
+                if paren_before_tag:
+                    lyrics_left = '(' + lyrics_left
+
                 processed_tag = found_type.replace('/', '').replace(')', '(')
                 if '<' in processed_tag:
                     processed_tag = processed_tag[1:-1]
