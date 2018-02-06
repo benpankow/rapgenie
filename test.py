@@ -5,7 +5,9 @@ genie = RapGenie(CLIENT_ACCESS_TOKEN)
 
 for result in genie.search(input('> ')):
     for section in result.parse_lyrics().sections:
+        print('[[{}]]'.format(section.name))
         for fragment in section.fragments:
-            print('[{}]'.format(fragment.artist.name))
+            if fragment.artist is not None:
+                print('[{}]'.format(fragment.artist.name))
             print(fragment.text.strip().replace('\n', ' \\\\ ') + '\n')
     break

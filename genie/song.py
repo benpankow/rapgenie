@@ -6,6 +6,7 @@ import string
 import difflib
 from .section import Section
 from .fragment import Fragment
+from .artist import Artist
 
 GENIUS_URL = 'https://genius.com/'
 API_GENIUS_URL = 'https://api.genius.com/'
@@ -74,22 +75,17 @@ class Song:
         else:
             return 'Unrequested song with ID ' + self.song_id
 
-    #Fetch song lyrics and metadata
+    # Fetch song lyrics and metadata
     def get_song_data(self):
-        #html_response = None
         json_response = None
 
         # Fetch song API info, extract song url from page
-        #elif self.song_id:
         json_response = self.genie.api_access(API_SONG_BASE_URL + self.song_id)
         self.url = json_response['response']['song']['url']
-        # Fetch song page
-        #html_response = bs_spoof(self.url)
 
-    #    if html_response != None and json_response != None:
-        # Store song metadata (TODO: More)
         self.has_data = True
 
+        # Fill in fields from json
         json_data = json_response['response']['song']
         self.title = json_data['title']
         self.release_date = json_data['release_date']
@@ -138,7 +134,21 @@ class Song:
 
             self.html_lyrics = str(lyrics_html)
 
+    def get_potential_artists(self):
+        potential_artists = self.featured_artists + [self.artist]
+        if 'Additional Vocals' in self.credits:
+            potential_artists += self.credits['Additional Vocals']
+        return potential_artists
 
+    def process_fragment_text(self, fragments, current_artist, fragment_text):
+        if len(fragment_text.strip()) > 0:
+            fragment_obj = Fragment(current_artist, fragment_text)
+            # Append fragment to the last if their artists match
+            if len(fragments) > 0 and fragments[-1].artist == fragment_obj.artist:
+                fragments[-1].text += fragment_text
+            else:
+                fragments.append(fragment_obj)
+        return fragments
 
     # Parses song's lyrics, and splits them into sections and fragments tied to
     # specific artists
@@ -156,35 +166,27 @@ class Song:
         tags_to_look_for_base = ['[', '<i>', '</i>', '<b>', '</b>', '<em>', '</em>', '<strong>', '</strong>']
         tags_to_look_for = tags_to_look_for_base[:]
 
+        # Potential artists who may deliver lyrics in the song
+        potential_artists = self.get_potential_artists()
+
         # Search for section header or HTML tag
         found_index, found_type = min_search(lyrics_left, tags_to_look_for)
-
-        # Potential artists who may deliver lyrics in the song
-        potential_artists = self.featured_artists + [self.artist]
-        if 'Additional Vocals' in self.credits:
-            potential_artists += self.credits['Additional Vocals']
 
         while found_type:
             # Create fragment of text up to the found tag / header
             fragment = lyrics_left[:found_index]
             fragment_text = BeautifulSoup(fragment, 'lxml').text
-            if len(fragment_text.strip()) > 0:
-                fragment_obj = Fragment(current_artist, fragment_text)
-                # Append fragment to the last if their artists match
-                if len(current_section.fragments) > 0 and current_section.fragments[-1].artist == fragment_obj.artist:
-                    current_section.fragments[-1].text += fragment_text
-                else:
-                    current_section.fragments.append(fragment_obj)
+            current_section.fragments = self.process_fragment_text(current_section.fragments, current_artist, fragment_text)
 
             # If a non-section-header square bracket is found (ie a [?] for an unknown lyric)
-            if found_type == '[' and lyrics_left[found_index - 1] != '\n':
+            if found_type == '[' and (lyrics_left[found_index - 1] != '\n' or lyrics_left[lyrics_left[found_index:].find(']') + found_index + 1] != '<'):
                 lyrics_left = lyrics_left[found_index+1:]
                 end_bracket_index = lyrics_left.find(']')
                 lyrics_left = lyrics_left[end_bracket_index + 1:]
                 found_index, found_type = min_search(lyrics_left, tags_to_look_for)
 
             # When a section header
-            if (found_type == '['):
+            elif (found_type == '['):
                 if len(current_section.fragments) > 0:
                     sections.append(current_section)
 
@@ -199,14 +201,15 @@ class Song:
 
                 # Get the list of artists present in the song section
                 artists_string = tag[end_name_index + 1:].strip()
-                artists_string = artists_string.replace('&amp;', ',').replace('+', ',').replace(' and ', ',')
 
-                tag_artists = [x.strip() for x in artists_string.split(',')]
+                print(artists_string)
+                tag_artists = [x.strip() for x in re.split(',?\s*and\s*|\s*&amp;\s*|\s(?=\()|\s*,\s*', artists_string)]
+                print(tag_artists)
 
                 if len(tag_artists) == 0 or len(tag_artists[0]) == 0:
                     for section in sections:
                         if section.name == tag_name:
-                            tag_artists = section.artists
+                            tag_artists = map(lambda x : x.name, section.artists)
 
                 section_artists = {}
                 look_for_parens = False
@@ -225,10 +228,10 @@ class Song:
                             artist_name = artist_name[1:-1]
                             has_parens = True
                             look_for_parens = True
-                        name = [tag.name for tag in tags]
+                        tag_names = [tag.name for tag in tags]
                         if has_parens:
-                            name += '('
-                        name.sort()
+                            tag_names += '('
+                        tag_names.sort()
 
                         artist_obj = None
                         max_ratio = 0
@@ -238,8 +241,12 @@ class Song:
                             if ratio > .8 and ratio > max_ratio:
                                 artist_obj = featured_artist
                                 max_ratio = ratio
+                        if artist_obj is None:
+                            artist_obj = Artist(self.genie)
+                            artist_obj.name = artist_name
 
-                        section_artists[''.join(name)] = artist_obj
+                        tag_names_str = ''.join(tag_names)
+                        section_artists[tag_names_str] = artist_obj
 
                 if not '' in section_artists:
                     section_artists[''] = self.artist
@@ -276,12 +283,7 @@ class Song:
 
         fragment = lyrics_left.strip()
         fragment_text = BeautifulSoup(fragment, 'lxml').text
-        if len(fragment_text.strip()) > 0:
-            fragment_obj = Fragment(current_artist, fragment_text)
-            if len(current_section.fragments) > 0 and current_section.fragments[-1].artist == fragment_obj.artist:
-                current_section.fragments[-1].text += fragment_text
-            else:
-                current_section.fragments.append(fragment_obj)
+        current_section.fragments = self.process_fragment_text(current_section.fragments, current_artist, fragment_text)
 
         if len(current_section.fragments) > 0:
             sections.append(current_section)
