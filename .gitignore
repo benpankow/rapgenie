@@ -3,9 +3,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.txt
-*.png
-*.ttf
-pillow.py
 
 rapgenie/rapgenie_secret.py
 
