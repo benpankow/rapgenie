@@ -154,22 +154,6 @@ class Song:
     # specific artists
     def process_song_fragments(self):
         self.has_fragments = True
-        test = re.split('(\[.*\]|</?i>|</?b>|</?em>|</?strong>)', self.html_lyrics)
-
-        current_artist = self.artist
-        current_section = Section('Intro', self.artist)
-        sections = []
-
-        for result in test:
-            if len(result) > 0 and result[0] == '[':
-            fragment_text = BeautifulSoup(result, 'lxml').text
-            current_section.fragments = self.process_fragment_text(current_section.fragments, current_artist, fragment_text)
-
-        sections.append(current_section)
-        self.sections = sections
-
-
-        '''self.has_fragments = True
 
         lyrics_left = self.html_lyrics
 
@@ -317,4 +301,4 @@ class Song:
         if len(current_section.fragments) > 0:
             sections.append(current_section)
 
-        self.sections = sections'''
+        self.sections = sections
